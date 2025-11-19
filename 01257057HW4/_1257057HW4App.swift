@@ -9,9 +9,16 @@ import SwiftUI
 
 @main
 struct _1257057HW4App: App {
+    
+    @State private var game = BalatroGame()
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            NavigationStack {
+                MainMenuView()
+            }
+            .environment(game)
+            .preferredColorScheme(.dark)
         }
     }
 }
