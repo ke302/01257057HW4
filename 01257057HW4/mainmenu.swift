@@ -22,9 +22,10 @@ struct MainMenuView: View {
                     Text("Joker")
                         .font(.system(size: 60, weight: .heavy, design: .serif))
                         .foregroundColor(.white)
-                    Text("Balatro Clone")
-                        .font(.title2)
-                        .foregroundColor(.gray)
+                    Image("sea")
+                        .resizable()
+                        .scaledToFit()
+                    
                 }
                 .padding(.top, 60)
                 
@@ -217,163 +218,6 @@ struct SettingsView: View {
                 }
             }
         }
-    }
-}
-
-struct GameView: View {
-    @Environment(BalatroGame.self) private var game
-    
-    var body: some View {
-        ZStack {
-            // 背景色 (深綠色桌布感覺)
-            LinearGradient(gradient: Gradient(colors: [Color(red: 0.1, green: 0.1, blue: 0.3), Color(red: 0.3, green: 0.1, blue: 0.1)]),
-                            startPoint: .topLeading, endPoint: .bottomTrailing)
-                 .ignoresSafeArea()
-          
-            VStack {
-                // 1. 頂部資訊區 (暫時)
-                HStack(alignment: .top) { // 將 alignment 改為 .top
-                    // 左側：分數與目標
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("分數")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        Text("\(game.chip)")
-                            .font(.system(size: 38, weight: .bold, design: .rounded))
-                            .foregroundColor(.yellow)
-                            .id(game.chip) // ✅ 使用 id 觸發數字變動動畫
-                            .animation(.easeInOut(duration: 0.5), value: game.chip) // 分數變動動畫
-                        
-                        Text("目標: \(game.blindTarget)")
-                            .font(.headline)
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding()
-                    .background(Color.black.opacity(0.4))
-                    .cornerRadius(15)
-                    
-                    Spacer()
-                    
-                    // 右側：手數與棄牌次數
-                    VStack(alignment: .trailing, spacing: 5) {
-                        Text("次數")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        Text("\(game.handsRemaining)")
-                            .font(.title)
-                            .fontWeight(.bold)
-                            .foregroundColor(game.handsRemaining <= 1 ? .red : .white)
-                            .id(game.handsRemaining) // ✅ 觸發變動動畫
-                            .animation(.easeInOut(duration: 0.3), value: game.handsRemaining)
-                        
-                        Text("棄牌: \(game.discardsRemaining)")
-                            .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding()
-                    .background(Color.black.opacity(0.4))
-                    .cornerRadius(15)
-                    
-                }
-                .padding(.horizontal)
-                .padding(.top, 10)
-                
-                // 2. 訊息區
-                Text(game.gameMessage)
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 15)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color.black.opacity(0.6))
-                            .shadow(color: .white.opacity(0.2), radius: 3)
-                    )
-                    .padding(.top, 5)
-                    .id(game.gameMessage) // ✅ 訊息改變時，可以增加動畫效果
-                    .transition(.opacity.animation(.easeInOut)) // 訊息變動時淡入淡出
-                
-                Spacer()
-                
-                // 3. 出牌區域 (顯示選了什麼牌型)
-                if !game.selectedCards.isEmpty {
-                    let handType = PokerHandEvaluator.evaluate(cards: game.selectedCards)
-                    Text("準備打出: \(handType.description)")
-                        .font(.headline)
-                        .foregroundColor(.yellow)
-                        .padding(.bottom, 5)
-                }
-                
-                // 4. 手牌區 (我們剛做好的組件)
-                HandView()
-                
-                // 5. 底部操作按鈕
-                switch game.gameState {
-                    case .playing:
-                        HStack(spacing: 20) {
-                        Button(action: { game.discardSelectedCards() }) {
-                            Text("棄牌 (\(game.discardsRemaining))")
-                                    // ... 樣式 ...
-                        }
-                        .disabled(game.selectedCards.isEmpty || game.discardsRemaining <= 0)
-                            
-                        Button(action: { game.playPokerHand(cards: game.selectedCards) }) {
-                        Text("出牌 (\(game.handsRemaining))")
-                                    // ... 樣式 ...
-                        }
-                        .disabled(game.selectedCards.isEmpty || game.handsRemaining <= 0)
-                        }
-                        
-                case .roundWon:
-                    VStack(spacing: 10) {
-                        Text("🎉 過關！")
-                            .font(.title)
-                            .foregroundColor(.yellow)
-                            
-                        Button(action: {
-                            withAnimation {
-                                game.startNextRound()
-                            }
-                        }) {
-                            Text("進入下一關")
-                                .font(.title2)
-                                .padding()
-                                .background(Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                        }
-                    }
-                    .padding()
-                    .background(Color.black.opacity(0.8)) //稍微遮擋一下手牌區
-                    .cornerRadius(15)
-                        
-                case .gameOver:
-                    VStack(spacing: 10) {
-                        Text("💀 失敗")
-                            .font(.title)
-                            .foregroundColor(.red)
-                            
-                        Button(action: {
-                            withAnimation {
-                                game.resetGame()
-                            }
-                        }) {
-                        Text("重新開始")
-                                .font(.title2)
-                                .padding()
-                                .background(Color.red)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                        }
-                    }
-                    .padding()
-                    .background(Color.black.opacity(0.8))
-                    .cornerRadius(15)
-                }
-            }
-            
-        }
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

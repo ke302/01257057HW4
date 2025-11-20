@@ -11,6 +11,7 @@ import Combine // 用於 Timer
 enum GameState {
     case playing    // 正在玩
     case roundWon   // 盲注達成（等待進入下一關）
+    case shopping // 顯示商店畫面
     case gameOver   // 遊戲結束（輸了）
 }
 
@@ -24,6 +25,8 @@ final class BalatroGame {
     var activeJokers: [JokerCard] = [] // 玩家擁有的特殊小丑牌
     var playedCards: [Card] = [] // 暫存打出的牌，用於計分
     var gameState: GameState = .playing
+    var money: Int = 4 // 初始金錢
+    var shopJokers: [JokerCard] = []
     // 追蹤目前被選取準備打出的牌
     var selectedCards: [Card] = []
     // MARK: - 分數與目標
@@ -41,10 +44,7 @@ final class BalatroGame {
     
     // MARK: - 初始化與重設
     init() {
-        // Balatro 通常從 8 張牌開始
-        dealInitialCards(numberOfCards: 8)
-        // 初始化時，給玩家一張範例小丑牌
-        activeJokers.append(JokerCard.simplePlusChipJoker())
+        resetGame()
     }
     
     func resetGame() {
@@ -61,7 +61,9 @@ final class BalatroGame {
         gameMessage = "新遊戲開始！"
         
         dealInitialCards(numberOfCards: 8)
-        activeJokers.append(JokerCard.simplePlusChipJoker())
+        
+        activeJokers.append(JokerCard.randomJoker())
+        
     }
     // 選牌/取消選牌的邏輯
         func toggleSelection(_ card: Card) {
@@ -92,16 +94,18 @@ final class BalatroGame {
         let handType = PokerHandEvaluator.evaluate(cards: cards)
         
         // 3. 計算分數 (使用剛剛做的 Calculator)
-        let result = ScoreCalculator.calculate(handType: handType, playedCards: cards)
+        let result = ScoreCalculator.calculate(
+                handType: handType,
+                playedCards: cards,
+                activeJokers: self.activeJokers
+            )
         
         // 4. 更新遊戲狀態
         self.chip += result.totalScore
         self.handsRemaining -= 1
         
         // 5. 產生訊息回饋
-        let feedback = "打出了 \(handType.description)！\n" +
-        "籌碼: \(result.chips) x 倍率: \(result.multiplier) = \(result.totalScore)"
-        self.gameMessage = feedback
+        self.gameMessage = "打出了 \(handType.description)！得 \(result.totalScore) 分"
         
         // 6. 檢查盲注目標是否達成
         checkBlindCondition()
@@ -149,6 +153,7 @@ final class BalatroGame {
         if chip >= blindTarget {
             // 贏了！切換狀態
             gameState = .roundWon
+            calculateRoundRewards()
             gameMessage = "🎉 盲注達成！請準備進入下一關。"
         } else if handsRemaining <= 0 {
             // 輸了！次數用完且分數不夠
@@ -218,27 +223,7 @@ final class BalatroGame {
         gameMessage = "棄掉了 \(cardsToDiscard.count) 張牌。"
     }
     
-    // MARK: - 小丑牌模型
-    struct JokerCard: Identifiable, Hashable {
-        let id = UUID()
-        let name: String
-        let description: String
-        // 儲存實際的加成邏輯
-        let chipBonus: Int
-        let multiplierBonus: Int
-        
-        // 範例：一張簡單加分的 Joker
-        static func simplePlusChipJoker() -> JokerCard {
-            return JokerCard(name: "紅臉小丑",
-                             description: "打出任何牌組時，總 Chip +20",
-                             chipBonus: 20,
-                             multiplierBonus: 0)
-        }
-        
-        // 在 Balatro 中，Joker 的邏輯遠比這複雜得多，但這是起點。
-    }
     
-    // 請加入到 BalatroGame 類別中
     func dealInitialCards(numberOfCards: Int) {
         for _ in 0..<numberOfCards {
             if let card = deck.draw() {
@@ -250,5 +235,51 @@ final class BalatroGame {
         playerHand.sort { $0.rank.pokerValue < $1.rank.pokerValue }
     }
     
-    
+    //結算發錢
+    func calculateRoundRewards() {
+        // 1. 過關基礎獎勵
+        let baseReward = 5
+        
+        // 2. 剩餘手數獎勵 ($1/手)
+        let handsReward = handsRemaining
+        
+        // 3. 利息 (每 $5 給 $1，上限通常是 $5，也就是存款 $25)
+        let interest = min(5, money / 5)
+        
+        let totalReward = baseReward + handsReward + interest
+        
+        // 發錢
+        self.money += totalReward
+        self.gameMessage = "過關！獎勵 $\(totalReward) (底薪\(baseReward) + 手數\(handsReward) + 利息\(interest))"
+    }
+    // 產生新商店內容
+    func generateShop() {
+        shopJokers = []
+        // 隨機產生 3 張小丑牌上架
+        for _ in 0..<3 {
+            shopJokers.append(JokerCard.randomJoker())
+        }
+    }
+    // 購買邏輯
+    func buyJoker(_ joker: JokerCard) {
+        if money >= joker.price {
+            if activeJokers.count < 5 { // 檢查欄位是否滿了
+                money -= joker.price
+                activeJokers.append(joker)
+                // 從商店移除已買的牌
+                shopJokers.removeAll { $0.id == joker.id }
+            } else {
+                gameMessage = "小丑牌欄位已滿！"
+            }
+        } else {
+            gameMessage = "金錢不足！"
+        }
+    }
+    func goToShop() {
+        // 先補貨
+        generateShop()
+        // 切換狀態到商店
+        gameState = .shopping
+        gameMessage = "歡迎來到商店！請選購。"
+    }
 }

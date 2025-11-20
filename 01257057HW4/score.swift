@@ -9,7 +9,6 @@ import Foundation
 
 struct ScoreCalculator {
     
-    // 定義一個回傳結果的結構，方便我們在 UI 上分開顯示籌碼和倍率
     struct ScoreResult {
         var chips: Int
         var multiplier: Int
@@ -18,27 +17,56 @@ struct ScoreCalculator {
         }
     }
 
-    /// 根據牌型和打出的牌，計算分數
-    static func calculate(handType: PokerHandType, playedCards: [Card]) -> ScoreResult {
+    /// 計算分數
+    static func calculate(
+        handType: PokerHandType,
+        playedCards: [Card],
+        activeJokers: [JokerCard]
+    ) -> ScoreResult {
         
-        // 1. 取得該牌型的基礎分數 (Base Chips) 和 基礎倍率 (Base Mult)
-        // 這裡使用 Balatro 的預設 Level 1 數值
+        // 1. 取得基礎分數 (呼叫下面的 getBaseStats)
         var (currentChips, currentMult) = getBaseStats(for: handType)
         
-        // 2. 加上卡牌本身的籌碼 (Card Chips)
-        // 注意：在嚴格的 Balatro 規則中，只有「計分卡牌」才加分 (例如兩對時，第5張雜牌不算分)
-        // 但為了簡化，我們先將打出的所有牌都加總。
+        // 2. 加上卡牌分數
         for card in playedCards {
             currentChips += card.rank.chipValue
         }
         
-        // 3. (未來擴充) 在這裡應用小丑牌 (Joker) 的加成
-        // applyJokerEffects(...)
+        // 3. 應用 Joker 效果
+        // 3a. 加減型
+        for joker in activeJokers {
+            switch joker.effect {
+            case .flatChips(let amount):
+                currentChips += amount
+            case .flatMult(let amount):
+                currentMult += amount
+            case .suitBonus(let suit, let mult, _):
+                let count = playedCards.filter { $0.suit == suit }.count
+                currentMult += (count * mult)
+            case .handTypeBonus(let type, let amount):
+                if handType == type {
+                    currentMult += amount
+                }
+            case .cardRankBonus(let rank, let amount):
+                let count = playedCards.filter { $0.rank == rank }.count
+                currentMult += (count * amount)
+            case .firstPlayedCardBonus(let amount):
+                 if !playedCards.isEmpty { currentChips += amount }
+            default:
+                break
+            }
+        }
         
-        return ScoreResult(chips: currentChips, multiplier: currentMult)
+        // 3b. 乘法型
+        for joker in activeJokers {
+            if case .xMult(let amount) = joker.effect {
+                currentMult = Int(Double(currentMult) * amount)
+            }
+        }
+        
+        return ScoreResult(chips: currentChips, multiplier: max(1, currentMult))
     }
     
-    /// 查表：取得各種牌型的初始數值 (Level 1)
     private static func getBaseStats(for type: PokerHandType) -> (chips: Int, mult: Int) {
         switch type {
         case .highCard:      return (5, 1)

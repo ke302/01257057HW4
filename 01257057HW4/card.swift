@@ -284,14 +284,14 @@ struct CardView: View {
             // 3. 卡牌內容
             if card.rank == .joker {
                 // 小丑牌特殊設計
-                VStack {
-                    Text("🤡")
-                        .font(.largeTitle)
-                    Text("JOKER")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundColor(.purple)
-                }
+                
+                Image("joker")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 70, height: 145)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+                
             } else {
                 // 普通牌設計
                 VStack {
@@ -336,7 +336,7 @@ struct CardView: View {
                 }
             }
         }
-        .frame(width: 70, height: 100) // 固定卡牌大小
+        .frame(width: 70, height: 130) // 固定卡牌大小
         // 關鍵動畫：選取時往上浮動
         .offset(y: isSelected ? -20 : 0)
         // 增加彈性動畫效果
