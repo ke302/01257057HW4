@@ -9,7 +9,7 @@ struct MainMenuView: View {
     // 控制 Sheet 顯示的狀態
     @State private var showSettings = false
     @State private var showAbout = false
-    
+    @AppStorage("HighScore") private var highScore: Int = 0
     var body: some View {
         ZStack {
             // A. 背景 (簡單的遊戲風格漸層)
@@ -25,6 +25,10 @@ struct MainMenuView: View {
                     Image("sea")
                         .resizable()
                         .scaledToFit()
+                    Text("最高紀錄: \(UserDefaults.standard.integer(forKey: "HighScore"))")
+                        .font(.headline)
+                        .foregroundColor(.yellow)
+                        .padding(.bottom, 10)
                     
                 }
                 .padding(.top, 60)
@@ -50,7 +54,7 @@ struct MainMenuView: View {
                     Button {
                         showAbout = true
                     } label: {
-                        MenuButtonLabel(title: "關於開發者", icon: "person.fill", color: .blue)
+                        MenuButtonLabel(title: "關於", icon: "person.fill", color: .blue)
                     }
                 }
                 .padding(.horizontal, 40)
@@ -138,27 +142,26 @@ struct AboutView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("關於這個遊戲")
                         .font(.headline)
-                    
+                        .foregroundColor(.black)
                     Text("這是一個使用 SwiftUI 與 iOS 17+ Observation 框架構建的卡牌遊戲練習專案，致敬了知名遊戲 Balatro 的核心機制。")
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.black)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Divider()
+                    
+                    Image("Image")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 300, height: 200)
                     
                     Divider()
                     
-                    HStack {
-                        Text("開發者")
-                        Spacer()
-                        Text("您的名字") // 記得改成您的名字
-                            .foregroundColor(.gray)
-                    }
-                    
-                    Divider()
                     
                     HStack {
                         Text("開發工具")
                         Spacer()
                         Text("SwiftUI & Xcode")
-                            .foregroundColor(.gray)
+                            .foregroundColor(.black)
                     }
                 }
                 .padding()

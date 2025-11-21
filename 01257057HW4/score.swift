@@ -21,11 +21,12 @@ struct ScoreCalculator {
     static func calculate(
         handType: PokerHandType,
         playedCards: [Card],
-        activeJokers: [JokerCard]
+        activeJokers: [JokerCard],
+        handLevels: [PokerHandType: Int]
     ) -> ScoreResult {
-        
+        let level = handLevels[handType] ?? 1
         // 1. 取得基礎分數 (呼叫下面的 getBaseStats)
-        var (currentChips, currentMult) = getBaseStats(for: handType)
+        var (currentChips, currentMult) = getBaseStats(for: handType, level: level)
         
         // 2. 加上卡牌分數
         for card in playedCards {
@@ -67,17 +68,26 @@ struct ScoreCalculator {
         return ScoreResult(chips: currentChips, multiplier: max(1, currentMult))
     }
     
-    private static func getBaseStats(for type: PokerHandType) -> (chips: Int, mult: Int) {
-        switch type {
-        case .highCard:      return (5, 1)
-        case .pair:          return (10, 2)
-        case .twoPair:       return (20, 2)
-        case .threeOfAKind:  return (30, 3)
-        case .straight:      return (30, 4)
-        case .flush:         return (35, 4)
-        case .fullHouse:     return (40, 4)
-        case .fourOfAKind:   return (60, 7)
-        case .straightFlush: return (100, 8)
+    static func getBaseStats(for type: PokerHandType, level: Int) -> (chips: Int, mult: Int) {
+            // 成長幅度：每升 1 級，籌碼 +10~30，倍率 +1~4 (依牌型強弱而定)
+            // 這裡用一個簡單的通用公式：
+            // 基礎籌碼 = 原始籌碼 + (等級-1) * 20
+            // 基礎倍率 = 原始倍率 + (等級-1) * 2
+            
+            let levelBonusChips = (level - 1) * 20
+            let levelBonusMult = (level - 1) * 2
+            
+            switch type {
+            case .highCard:      return (5 + levelBonusChips, 1 + levelBonusMult)
+            case .pair:          return (10 + levelBonusChips, 2 + levelBonusMult)
+            case .twoPair:       return (20 + levelBonusChips, 2 + levelBonusMult)
+            case .threeOfAKind:  return (30 + levelBonusChips, 3 + levelBonusMult)
+            case .straight:      return (30 + levelBonusChips, 4 + levelBonusMult)
+            case .flush:         return (35 + levelBonusChips, 4 + levelBonusMult)
+            case .fullHouse:     return (40 + levelBonusChips, 4 + levelBonusMult)
+            case .fourOfAKind:   return (60 + levelBonusChips, 7 + levelBonusMult)
+            case .straightFlush: return (100 + levelBonusChips, 8 + levelBonusMult)
+            case .fiveOfAKind:   return (120 + levelBonusChips, 8 + levelBonusMult)
+            }
         }
-    }
 }

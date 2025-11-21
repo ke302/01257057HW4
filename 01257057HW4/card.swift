@@ -127,19 +127,17 @@ struct Deck {
 
 // MARK: - 撲克牌型
 enum PokerHandType: Int, Comparable, CaseIterable {
-    // 數值越大代表牌型越強 (這是 Balatro 的基本順序)
-    case highCard = 1       // 高牌 (單張)
-    case pair = 2           // 一對
-    case twoPair = 3        // 兩對
-    case threeOfAKind = 4   // 三條
-    case straight = 5       // 順子
-    case flush = 6          // 同花
-    case fullHouse = 7      // 葫蘆
-    case fourOfAKind = 8    // 四條
-    case straightFlush = 9  // 同花順
-    // case fiveOfAKind // 五條 (需要特殊牌或隱藏牌型，暫不列入)
+    case highCard = 1
+    case pair = 2
+    case twoPair = 3
+    case threeOfAKind = 4
+    case straight = 5
+    case flush = 6
+    case fullHouse = 7
+    case fourOfAKind = 8
+    case straightFlush = 9
+    case fiveOfAKind = 10 // ✨ 新增：五條 (有 Joker 才有可能)
     
-    // 實作 Comparable 所需的小於運算
     static func < (lhs: PokerHandType, rhs: PokerHandType) -> Bool {
         return lhs.rawValue < rhs.rawValue
     }
@@ -155,113 +153,143 @@ enum PokerHandType: Int, Comparable, CaseIterable {
         case .fullHouse: return "葫蘆"
         case .fourOfAKind: return "四條"
         case .straightFlush: return "同花順"
+        case .fiveOfAKind: return "五條"
         }
     }
 }
 
 struct PokerHandEvaluator {
     
-    /// 輸入一組牌 (通常 1~5 張)，回傳最佳牌型
     static func evaluate(cards: [Card]) -> PokerHandType {
-        // 如果沒有牌，預設回傳高牌 (或處理錯誤)
         guard !cards.isEmpty else { return .highCard }
         
-        // 1. 整理資料：將牌按點數排序
-        let sortedCards = cards.sorted { $0.rank.pokerValue < $1.rank.pokerValue }
+        // 1. 分離 Joker 和普通牌
+        let jokers = cards.filter { $0.rank == .joker }
+        let regularCards = cards.filter { $0.rank != .joker }
+        let jokerCount = jokers.count
+        let totalCards = cards.count
         
-        // 2. 統計點數頻率 (例如：有幾張 2，有幾張 K)
+        // 特殊情況：如果全部都是 Joker
+        if regularCards.isEmpty {
+            if totalCards >= 5 { return .fiveOfAKind }
+            if totalCards == 4 { return .fourOfAKind }
+            if totalCards == 3 { return .threeOfAKind }
+            if totalCards == 2 { return .pair }
+            return .highCard
+        }
+        
+        // --- 分析普通牌 ---
+        
+        // A. 點數頻率統計 (例如: [K:2, Q:1])
         var rankCounts: [Rank: Int] = [:]
-        for card in cards {
+        for card in regularCards {
             rankCounts[card.rank, default: 0] += 1
         }
-        // 將頻率轉為陣列並排序 (例如 Full House 會是 [3, 2]，四條會是 [4, 1])
-        let counts = rankCounts.values.sorted(by: >)
+        // 排序頻率 (例如 Full House 會是 [3, 2])
+        var sortedCounts = rankCounts.values.sorted(by: >)
         
-        // 3. 檢查是否為同花 (Flush)
-        // 條件：牌數 >= 5 且所有花色相同 (Balatro 規則通常要求 5 張才算同花，除非有特殊 Joker)
-        // 這裡我們先假設必須滿 5 張才算同花/順子，若只要有同花特徵就算，可移除 count >= 5
-        let isFlush = (cards.count >= 5) && (Set(cards.map { $0.suit }).count == 1)
+        // B. 花色統計 (忽略 Joker 的 nil 花色)
+        var suitCounts: [Suit: Int] = [:]
+        for card in regularCards {
+            if let suit = card.suit {
+                suitCounts[suit, default: 0] += 1
+            }
+        }
+        let maxSuitCount = suitCounts.values.max() ?? 0
         
-        // 4. 檢查是否為順子 (Straight)
-        let isStraight = checkStraight(sortedCards: sortedCards)
+        // C. 排序後的點數值 (去重)
+        let sortedUniqueValues = Array(Set(regularCards.map { $0.rank.pokerValue })).sorted()
         
-        // --- 判定邏輯 ---
+        // --- 結合 Joker 進行判定 ---
         
-        // 同花順 (Straight Flush)
-        if isFlush && isStraight {
+        // 1. 判定同花 (Flush)
+        // 邏輯：最多的一種花色數量 + Joker 數量 >= 5
+        // Balatro 規則：只要能湊成同花就算，不一定要 5 張打滿。但標準撲克要 5 張。
+        // 這裡採用標準規則：總張數 >= 5 且 (某花色數量 + Joker數量 >= 5)
+        let canMakeFlush = (totalCards >= 5) && (maxSuitCount + jokerCount >= 5)
+        
+        // 2. 判定順子 (Straight)
+        // 邏輯較複雜，檢查是否有機會用 Joker 填補空缺形成 5 張連續
+        let canMakeStraight = (totalCards >= 5) && checkStraightWithWildcards(sortedUniqueValues: sortedUniqueValues, jokerCount: jokerCount)
+        
+        // --- 最終判定 ---
+        
+        if canMakeFlush && canMakeStraight {
             return .straightFlush
         }
         
-        // 四條 (Four of a Kind)
-        if counts.first == 4 {
-            return .fourOfAKind
-        }
+        // 利用 Joker 強化點數組合 (將 Joker 加到最多的那一組上)
+        // 例如：有兩張 7，一張 Joker -> 變成三條 (count: 2 + 1 = 3)
+        let bestCount = (sortedCounts.first ?? 0) + jokerCount
         
-        // 葫蘆 (Full House) - 3張一樣 + 2張一樣
-        if counts.count >= 2 && counts[0] == 3 && counts[1] == 2 {
-            return .fullHouse
-        }
+        if bestCount >= 5 { return .fiveOfAKind }
+        if bestCount == 4 { return .fourOfAKind }
         
-        // 同花 (Flush)
-        if isFlush {
-            return .flush
-        }
-        
-        // 順子 (Straight)
-        if isStraight {
-            return .straight
-        }
-        
-        // 三條 (Three of a Kind)
-        if counts.first == 3 {
-            return .threeOfAKind
-        }
-        
-        // 兩對 (Two Pair) - [2, 2, 1]
-        if counts.count >= 2 && counts[0] == 2 && counts[1] == 2 {
-            return .twoPair
-        }
-        
-        // 一對 (Pair)
-        if counts.first == 2 {
-            return .pair
-        }
-        
-        // 什麼都不是，就是高牌
-        return .highCard
-    }
-    
-    // 輔助方法：檢查順子
-    private static func checkStraight(sortedCards: [Card]) -> Bool {
-        // 順子通常需要至少 5 張牌
-        guard sortedCards.count >= 5 else { return false }
-        
-        // 取得所有不重複的點數值
-        let uniqueValues = Array(Set(sortedCards.map { $0.rank.pokerValue })).sorted()
-        
-        // 如果不重複的牌不夠 5 張，不可能是順子
-        if uniqueValues.count < 5 { return false }
-        
-        // 檢查連續性 (取最後 5 張最大的來檢查)
-        // 這裡簡化邏輯：只要有連續 5 張就算
-        // 實際 Balatro 可能只打 5 張，所以直接檢查這 5 張即可
-        
-        // 處理特殊情況：A, 2, 3, 4, 5 (A=14, 但這裡要當 1)
-        // 檢查是否包含 A(14), 2, 3, 4, 5
-        let isLowAceStraight = uniqueValues.contains(14) && uniqueValues.contains(2) && uniqueValues.contains(3) && uniqueValues.contains(4) && uniqueValues.contains(5)
-        if isLowAceStraight { return true }
-        
-        // 一般情況檢查
-        // 滑動視窗檢查是否有連續 5 個數字
-        for i in 0...(uniqueValues.count - 5) {
-            let subset = uniqueValues[i..<(i+5)]
-            if let min = subset.first, let max = subset.last {
-                if max - min == 4 {
-                    return true
-                }
+        // 葫蘆判定：(最多張數 + Joker >= 3) 且 (第二多張數 >= 2)
+        // 注意 Joker 只能用一次，這裡簡化判定，假設 Joker 優先湊三條
+        if sortedCounts.count >= 2 {
+             if (sortedCounts[0] + jokerCount >= 3) && sortedCounts[1] >= 2 {
+                 return .fullHouse
+             }
+            // 特殊葫蘆：兩對 + 1張 Joker (例如：2,2,3,3,Joker -> 2,2,2,3,3)
+            if sortedCounts[0] == 2 && sortedCounts[1] == 2 && jokerCount >= 1 {
+                return .fullHouse
             }
         }
         
+        if canMakeFlush { return .flush }
+        if canMakeStraight { return .straight }
+        
+        if bestCount == 3 { return .threeOfAKind }
+        
+        // 兩對判定
+        if sortedCounts.count >= 2 && sortedCounts[0] == 2 && sortedCounts[1] == 2 {
+            // Joker 沒用上，原本就是兩對
+            return .twoPair
+        }
+        // 特殊兩對：一對 + 單張 + Joker (例如 2,2,3,Joker -> 2,2,3,3)
+        if sortedCounts.count >= 2 && sortedCounts[0] == 2 && sortedCounts[1] == 1 && jokerCount >= 1 {
+            return .twoPair
+        }
+        
+        if bestCount == 2 { return .pair }
+        
+        return .highCard
+    }
+    
+    // 輔助方法：檢查百搭順子
+    private static func checkStraightWithWildcards(sortedUniqueValues: [Int], jokerCount: Int) -> Bool {
+        if sortedUniqueValues.isEmpty { return jokerCount >= 5 }
+        
+        // 處理 A 的特殊情況 (可以當 14 也可以當 1)
+        var valuesToCheck = [sortedUniqueValues]
+        if sortedUniqueValues.contains(14) { // 如果有 A
+            var lowAceValues = sortedUniqueValues.filter { $0 != 14 }
+            lowAceValues.insert(1, at: 0) // 加入 1
+            valuesToCheck.append(lowAceValues)
+        }
+        
+        for values in valuesToCheck {
+            // 滑動視窗檢查，視窗大小隨著 Joker 數量變化
+            // 我們需要找到一個區間，區間內的 (最大值 - 最小值) < 5，且缺少的牌數 <= jokerCount
+            for i in 0..<values.count {
+                for j in i..<values.count {
+                    let min = values[i]
+                    let max = values[j]
+                    
+                    // 如果跨度已經超過 4 (例如 2 和 7)，不可能組成 5 張順子，跳過
+                    if (max - min) >= 5 { continue }
+                    
+                    let cardsInBetween = j - i + 1
+                    let cardsNeeded = 5 - cardsInBetween
+                    
+                    // 如果需要的卡牌數可以用 Joker 填補，就是順子
+                    if cardsNeeded <= jokerCount {
+                        return true
+                    }
+                }
+            }
+        }
         return false
     }
 }
@@ -288,7 +316,7 @@ struct CardView: View {
                 Image("joker")
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 70, height: 145)
+                    .frame(width: 70, height: 140)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .contentShape(Rectangle())
                 
@@ -334,9 +362,10 @@ struct CardView: View {
                     }
                     .padding(4)
                 }
+                .frame(width: 70, height: 130)
             }
         }
-        .frame(width: 70, height: 130) // 固定卡牌大小
+        .frame(width: 70, height: 140) // 固定卡牌大小
         // 關鍵動畫：選取時往上浮動
         .offset(y: isSelected ? -20 : 0)
         // 增加彈性動畫效果
@@ -356,6 +385,8 @@ struct HandView: View {
                         isSelected: game.selectedCards.contains(card)
                     )
                     .onTapGesture {
+                        // 播放音效 🎵
+                            AudioManager.shared.playSound(named: "card_select")
                         // 點擊觸發震動回饋 (Haptic Feedback)
                         let impactHeavy = UIImpactFeedbackGenerator(style: .light)
                         impactHeavy.impactOccurred()

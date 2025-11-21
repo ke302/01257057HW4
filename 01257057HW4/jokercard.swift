@@ -19,7 +19,10 @@ struct JokerCard: Identifiable, Equatable {
     
     // ✨ 新增：這張 Joker 對應的圖片名稱 (請確保 Assets 裡有這些圖片)
     let imageName: String
-    
+    // 在 JokerCard 結構體內新增
+    var sellValue: Int {
+        return max(1, price / 2) // 賣價是原價的一半，最少 $1
+    }
     // 更新範例資料 (這裡假設您會去 Assets 加入對應圖片)
     static func exampleJokers() -> [JokerCard] {
         return [

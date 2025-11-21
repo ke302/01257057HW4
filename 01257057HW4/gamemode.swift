@@ -29,11 +29,32 @@ final class BalatroGame {
     var shopJokers: [JokerCard] = []
     // 追蹤目前被選取準備打出的牌
     var selectedCards: [Card] = []
+    var handLevels: [PokerHandType: Int] = [
+        .highCard: 1,
+        .pair: 1,
+        .twoPair: 1,
+        .threeOfAKind: 1,
+        .straight: 1,
+        .flush: 1,
+        .fullHouse: 1,
+        .fourOfAKind: 1,
+        .straightFlush: 1
+    ]
     // MARK: - 分數與目標
     var chip: Int = 0 // 當前累積的分數
     var multiplier: Int = 1 // 當前倍率
     var blindTarget: Int = 300 // 盲注目標分數
-    
+    // 讀取最高分
+    var highScore: Int {
+        UserDefaults.standard.integer(forKey: "HighScore")
+    }
+
+    // 更新最高分的方法
+    func saveHighScore() {
+        if chip > highScore {
+            UserDefaults.standard.set(chip, forKey: "HighScore")
+        }
+    }
     // MARK: - 回合限制
     var handsRemaining: Int = 4 // 剩餘可打出的手數
     var discardsRemaining: Int = 3 // 剩餘可棄牌次數
@@ -48,6 +69,10 @@ final class BalatroGame {
     }
     
     func resetGame() {
+        // 👇 切斷上一局的失敗/勝利音效
+        AudioManager.shared.stopAllSFX()
+        AudioManager.shared.playBGM() // 確保 BGM 回歸
+        
         deck = Deck()
         playerHand = []
         activeJokers = []
@@ -59,7 +84,10 @@ final class BalatroGame {
         currentBlind = 1
         gameState = .playing
         gameMessage = "新遊戲開始！"
-        
+        handLevels = [
+                .highCard: 1, .pair: 1, .twoPair: 1, .threeOfAKind: 1,
+                .straight: 1, .flush: 1, .fullHouse: 1, .fourOfAKind: 1, .straightFlush: 1
+            ]
         dealInitialCards(numberOfCards: 8)
         
         activeJokers.append(JokerCard.randomJoker())
@@ -84,12 +112,14 @@ final class BalatroGame {
             
         // 🛡️ 防護盾 2：確保手數大於 0 (防止變成 -1)
         guard handsRemaining > 0 else {
+            AudioManager.shared.playSound(named: "error") // 錯誤音效
             gameMessage = "沒有出手次數了！"
             return
         }
         // 1. 檢查：確保有選牌
         guard !cards.isEmpty else { return }
-        
+        // 播放出牌音效 🎵
+        AudioManager.shared.playSound(named: "card_fan")
         // 2. 識別牌型 (使用上一步做的 Evaluator)
         let handType = PokerHandEvaluator.evaluate(cards: cards)
         
@@ -97,8 +127,11 @@ final class BalatroGame {
         let result = ScoreCalculator.calculate(
                 handType: handType,
                 playedCards: cards,
-                activeJokers: self.activeJokers
+                activeJokers: self.activeJokers,
+                handLevels: self.handLevels
             )
+        // 在計分完成後，如果有得分，可以播個籌碼聲
+        AudioManager.shared.playSound(named: "chips_count")
         
         // 4. 更新遊戲狀態
         self.chip += result.totalScore
@@ -125,6 +158,10 @@ final class BalatroGame {
         }
     }
     func startNextRound() {
+        // 👇 切斷上一局的勝利音效
+        AudioManager.shared.stopAllSFX()
+        AudioManager.shared.playBGM() // 確保 BGM 回歸
+        
         // 1. 提升難度 (簡單的倍率成長)
         currentBlind += 1
         blindTarget = Int(Double(blindTarget) * 1.5) // 目標分數變 1.5 倍
@@ -153,12 +190,15 @@ final class BalatroGame {
         if chip >= blindTarget {
             // 贏了！切換狀態
             gameState = .roundWon
+            AudioManager.shared.playSound(named: "victory")
             calculateRoundRewards()
-            gameMessage = "🎉 盲注達成！請準備進入下一關。"
+            gameMessage = "你可真厲害啊"
         } else if handsRemaining <= 0 {
             // 輸了！次數用完且分數不夠
             gameState = .gameOver
-            gameMessage = "💔 遊戲結束。手數耗盡且分數未達標。"
+            saveHighScore()
+            AudioManager.shared.playSound(named: "defeat")
+            gameMessage = "啊啊啊啊啊啊啊啊啊啊啊啊"
         }
         // 如果還沒贏也還沒輸，狀態保持 .playing，繼續遊戲
     }
@@ -204,7 +244,8 @@ final class BalatroGame {
             gameMessage = "沒有棄牌次數了！"
             return
         }
-        
+        // 播放棄牌音效 🎵
+        AudioManager.shared.playSound(named: "card_fan")
         guard !selectedCards.isEmpty else { return }
         
         // 1. 扣除次數
@@ -225,6 +266,7 @@ final class BalatroGame {
     
     
     func dealInitialCards(numberOfCards: Int) {
+        AudioManager.shared.playSound(named: "card_fan")
         for _ in 0..<numberOfCards {
             if let card = deck.draw() {
                 playerHand.append(card)
@@ -238,7 +280,7 @@ final class BalatroGame {
     //結算發錢
     func calculateRoundRewards() {
         // 1. 過關基礎獎勵
-        let baseReward = 5
+        let baseReward = 4 + (currentBlind * 2)
         
         // 2. 剩餘手數獎勵 ($1/手)
         let handsReward = handsRemaining
@@ -250,7 +292,9 @@ final class BalatroGame {
         
         // 發錢
         self.money += totalReward
-        self.gameMessage = "過關！獎勵 $\(totalReward) (底薪\(baseReward) + 手數\(handsReward) + 利息\(interest))"
+        
+        // 更新訊息 (讓玩家知道錢怎麼來的)
+        self.gameMessage = "過關！獎勵 $\(totalReward)\n(底薪\(baseReward) + 手數\(handsReward) + 利息\(interest))"
     }
     // 產生新商店內容
     func generateShop() {
@@ -268,11 +312,22 @@ final class BalatroGame {
                 activeJokers.append(joker)
                 // 從商店移除已買的牌
                 shopJokers.removeAll { $0.id == joker.id }
+                AudioManager.shared.playSound(named: "chips_count") // 購買成功的錢聲
             } else {
+                AudioManager.shared.playSound(named: "error") // 錢不夠
                 gameMessage = "小丑牌欄位已滿！"
             }
         } else {
+            AudioManager.shared.playSound(named: "error") // 錢不夠
             gameMessage = "金錢不足！"
+        }
+    }
+    func sellJoker(_ joker: JokerCard) {
+        // 找到這張牌並移除
+        if let index = activeJokers.firstIndex(where: { $0.id == joker.id }) {
+            activeJokers.remove(at: index)
+            money += joker.sellValue // 加錢
+            gameMessage = "賣出了 \(joker.name)，獲得 $\(joker.sellValue)"
         }
     }
     func goToShop() {
@@ -282,4 +337,11 @@ final class BalatroGame {
         gameState = .shopping
         gameMessage = "歡迎來到商店！請選購。"
     }
+    func levelUpHand(_ type: PokerHandType) {
+        if let currentLevel = handLevels[type] {
+            handLevels[type] = currentLevel + 1
+            gameMessage = "\(type.description) 升級到了 Lv.\(currentLevel + 1)！"
+        }
+    }
+    
 }

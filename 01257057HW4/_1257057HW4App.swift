@@ -11,6 +11,8 @@ import SwiftUI
 struct _1257057HW4App: App {
     
     @State private var game = BalatroGame()
+    @AppStorage("isMusicOn") private var isMusicOn = true
+    @AppStorage("isSoundEffectOn") private var isSoundEffectOn = true
     
     var body: some Scene {
         WindowGroup {
@@ -19,6 +21,16 @@ struct _1257057HW4App: App {
             }
             .environment(game)
             .preferredColorScheme(.dark)
+            .onAppear {
+                AudioManager.shared.updateMusicState(isMusicOn: isMusicOn)
+                AudioManager.shared.isSoundEffectOn = isSoundEffectOn
+            }
+            .onChange(of: isMusicOn) { _, newValue in
+                AudioManager.shared.updateMusicState(isMusicOn: newValue)
+            }
+            .onChange(of: isSoundEffectOn) { _, newValue in
+                AudioManager.shared.isSoundEffectOn = newValue
+            }
         }
     }
 }
